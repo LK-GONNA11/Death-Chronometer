@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Death Chronometer</title>
+    <style>
+        :root {
+            --dark-bg: #121212;
+            --darker-bg: #0a0a0a;
+            --accent: #8b0000;
+            --text: #e0e0e0;
+            --text-dim: #a0a0a0;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: var(--dark-bg);
+            color: var(--text);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: var(--darker-bg);
+            padding: 1rem;
+            border-bottom: 1px solid var(--accent);
+            text-align: center;
+        }
+
+        h1 {
+            margin: 0;
+            color: var(--accent);
+            font-size: 2em;
+        }
+
+        p {
+            font-size: 0.9em;
+            color: var(--text-dim);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+            flex-grow: 1;
+        }
+
+        .timer-display {
+            font-size: 3rem;
+            text-align: center;
+            margin: 1.5rem 0;
+            color: var(--accent);
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            gap: 0.8rem;
+            margin-bottom: 1.5rem;
+        }
+
+        button {
+            background-color: var(--darker-bg);
+            color: var(--text);
+            border: 1px solid var(--accent);
+            padding: 0.7rem 1.2rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 1em;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        button:hover {
+            background-color: var(--accent);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        input, textarea {
+            background-color: var(--darker-bg);
+            color: var(--text);
+            border: 1px solid #333;
+            padding: 0.6rem;
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            display: block;
+            box-sizing: border-box;
+        }
+
+        textarea {
+            min-height: 80px;
+        }
+
+        .leaderboard, .active-timers {
+            margin-top: 2rem;
+        }
+
+        h2 {
+            color: var(--accent);
+            font-size: 1.5em;
+            margin-bottom: 1rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            display: block;
+            overflow-x: auto;
+        }
+
+        th, td {
+            padding: 0.6rem;
+            text-align: left;
+            border-bottom: 1px solid #333;
+            font-size: 0.85em;
+            white-space: nowrap;
+        }
+
+        th {
+            background-color: var(--darker-bg);
+        }
+
+        .timer-card {
+            background-color: var(--darker-bg);
+            padding: 0.8rem;
+            margin-bottom: 0.8rem;
+            border-left: 3px solid var(--accent);
+        }
+
+        .current-timer {
+            background-color: rgba(139, 0, 0, 0.1);
+            padding: 1rem;
+            margin: 1rem 0;
+            border: 1px solid var(--accent);
+        }
+
+        .loading {
+            color: var(--text-dim);
+            text-align: center;
+            padding: 1rem;
+        }
+
+        .error {
+            color: #ff4444;
+            text-align: center;
+            padding: 1rem;
+        }
+
+        @media (min-width: 768px) {
+            h1 {
+                font-size: 2.5em;
+            }
+
+            .timer-display {
+                font-size: 5rem;
+                margin: 2rem 0;
+            }
+
+            .controls {
+                flex-direction: row;
+                gap: 1rem;
+                margin-bottom: 2rem;
+            }
+
+            button {
+                width: auto;
+            }
+
+            input, textarea {
+                max-width: 600px;
+            }
+
+            h2 {
+                font-size: 2em;
+            }
+
+            th, td {
+                padding: 0.75rem;
+                font-size: 1em;
+                white-space: normal;
+            }
+
+            table {
+                display: table;
+                overflow-x: visible;
+            }
+
+            .timer-card {
+                padding: 1rem;
+                margin-bottom: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Death Chronometer</h1>
+        <p>Measure your time on this earth</p>
+    </header>
+
+    <div class="container">
+        <div class="timer-section">
+            <div class="form-group">
+                <input type="text" id="pseudo" placeholder="Your Username" maxlength="20" required>
+            </div>
+
+            <div class="form-group">
+                <textarea id="description" placeholder="Description of your chronometer (optional)"></textarea>
+            </div>
+
+            <div class="timer-display" id="timer">
+                00:00:00:00
+            </div>
+
+            <div class="controls">
+                <button id="startBtn">Start</button>
+                <button id="pauseBtn" disabled>Pause</button>
+                <button id="resetBtn" disabled>Reset</button>
+            </div>
+
+            <div id="current-timer-display" class="current-timer" style="display: none;">
+                <h3>Your Chronometer</h3>
+                <div id="current-timer-info"></div>
+            </div>
+        </div>
+
+        <div class="leaderboard">
+            <h2>Longest Lifespans Leaderboard</h2>
+            <div id="leaderboard-loading" class="loading">Loading...</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Username</th>
+                        <th>Time</th>
+                        <th>Description</th>
+                        <th>Started</th>
+                    </tr>
+                </thead>
+                <tbody id="leaderboard-body">
+                </tbody>
+            </table>
+        </div>
+
+        <div class="active-timers">
+            <h2>Recently Active Chronometers</h2>
+            <div id="recent-loading" class="loading">Loading...</div>
+            <div id="recent-timers">
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:3000/api';
+        let timerInterval;
+        let seconds = 0;
+        let isRunning = false;
+        let currentTimer = null;
+
+        const timerDisplay = document.getElementById('timer');
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const pseudoInput = document.getElementById('pseudo');
+        const descriptionInput = document.getElementById('description');
+        const leaderboardBody = document.getElementById('leaderboard-body');
+        const recentTimersContainer = document.getElementById('recent-timers');
+        const currentTimerDisplay = document.getElementById('current-timer-display');
+        const currentTimerInfo = document.getElementById('current-timer-info');
+        const leaderboardLoading = document.getElementById('leaderboard-loading');
+        const recentLoading = document.getElementById('recent-loading');
+
+        // API Functions
+        async function fetchTimers() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/timers`);
+                if (!response.ok) throw new Error('Failed to fetch timers');
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching timers:', error);
+                showError(leaderboardBody, 'Failed to load leaderboard');
+                return [];
+            }
+        }
+
+        async function fetchRecentTimers() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/timers/recent`);
+                if (!response.ok) throw new Error('Failed to fetch recent timers');
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching recent timers:', error);
+                showError(recentTimersContainer, 'Failed to load recent timers');
+                return [];
+            }
+        }
+
+        async function fetchTimerByPseudo(pseudo) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/timers/${encodeURIComponent(pseudo)}`);
+                if (!response.ok) throw new Error('Timer not found');
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching timer:', error);
+                return null;
+            }
+        }
+
+        async function createTimer(timerData) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/timers`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(timerData)
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Failed to create timer');
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('Error creating timer:', error);
+                alert(error.message);
+                throw error;
+            }
+        }
+
+        async function updateTimer(timerId, timerData) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/timers/${timerId}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(timerData)
+                });
+                
+                if (!response.ok) throw new Error('Failed to update timer');
+                return await response.json();
+            } catch (error) {
+                console.error('Error updating timer:', error);
+                throw error;
+            }
+        }
+
+        async function deleteTimer(timerId) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/timers/${timerId}`, {
+                    method: 'DELETE'
+                });
+                
+                if (!response.ok) throw new Error('Failed to delete timer');
+                return await response.json();
+            } catch (error) {
+                console.error('Error deleting timer:', error);
+                throw error;
+            }
+        }
+
+        // Helper Functions
+        function formatTime(totalSeconds) {
+            const days = Math.floor(totalSeconds / (3600 * 24));
+            const hours = Math.floor((totalSeconds % (3600 * 24)) / 3600);
+            const minutes = Math.floor((totalSeconds % 3600) / 60);
+            const secs = totalSeconds % 60;
+
+            return `${days.toString().padStart(2, '0')}:${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+        }
+
+        function updateDisplay() {
+            timerDisplay.textContent = formatTime(seconds);
+        }
+
+        function showError(element, message) {
+            element.innerHTML = `<div class="error">${message}</div>`;
+        }
+
+        // Timer Functions
+        async function startTimer() {
+            const pseudo = pseudoInput.value.trim();
+            if (!pseudo) {
+                alert('Please enter a username');
+                return;
+            }
+
+            isRunning = true;
+            startBtn.disabled = true;
+            pauseBtn.disabled = false;
+            resetBtn.disabled = false;
+            pseudoInput.disabled = true;
+            descriptionInput.disabled = true;
+
+            try {
+                if (!currentTimer) {
+                    // Create new timer
+                    const timerData = {
+                        pseudo,
+                        description: descriptionInput.value.trim(),
+                        isRunning: true
+                    };
+                    
+                    currentTimer = await createTimer(timerData);
+                    seconds = currentTimer.seconds || 0;
+                } else {
+                    // Update existing timer
+                    currentTimer.isRunning = true;
+                    currentTimer.lastUpdated = new Date().toISOString();
+                    await updateTimer(currentTimer._id, {
+                        isRunning: true,
+                        lastUpdated: currentTimer.lastUpdated
+                    });
+                }
+
+                timerInterval = setInterval(async () => {
+                    seconds++;
+                    updateDisplay();
+                    currentTimer.seconds = seconds;
+                    currentTimer.lastUpdated = new Date().toISOString();
+
+                    if (seconds % 10 === 0) {
+                        try {
+                            await updateTimer(currentTimer._id, {
+                                seconds: currentTimer.seconds,
+                                lastUpdated: currentTimer.lastUpdated
+                            });
+                            await updateLeaderboard();
+                            await updateRecentTimers();
+                        } catch (error) {
+                            console.error('Error auto-saving timer:', error);
+                        }
+                    }
+                }, 1000);
+
+                displayCurrentTimer();
+                await updateLeaderboard();
+                await updateRecentTimers();
+            } catch (error) {
+                isRunning = false;
+                startBtn.disabled = false;
+                pauseBtn.disabled = true;
+                resetBtn.disabled = true;
+                console.error('Error starting timer:', error);
+            }
+        }
+
+        async function pauseTimer() {
+            isRunning = false;
+            clearInterval(timerInterval);
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+
+            if (currentTimer) {
+                try {
+                    currentTimer.isRunning = false;
+                    currentTimer.lastUpdated = new Date().toISOString();
+                    await updateTimer(currentTimer._id, {
+                        isRunning: false,
+                        seconds: seconds,
+                        lastUpdated: currentTimer.lastUpdated
+                    });
+                    await updateLeaderboard();
+                    await updateRecentTimers();
+                } catch (error) {
+                    console.error('Error pausing timer:', error);
+                }
+            }
+        }
+
+        async function resetTimer() {
+            if (!confirm('Are you sure you want to reset your chronometer? This action is irreversible.')) {
+                return;
+            }
+
+            clearInterval(timerInterval);
+            isRunning = false;
+            seconds = 0;
+            updateDisplay();
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+            resetBtn.disabled = true;
+            pseudoInput.disabled = false;
+            descriptionInput.disabled = false;
+
+            if (currentTimer) {
+                try {
+                    await deleteTimer(currentTimer._id);
+                    currentTimer = null;
+                } catch (error) {
+                    console.error('Error deleting timer:', error);
+                }
+            }
+
+            currentTimerDisplay.style.display = 'none';
+            await updateLeaderboard();
+            await updateRecentTimers();
+        }
+
+        async function loadExistingTimer(pseudo) {
+            try {
+                const existingTimer = await fetchTimerByPseudo(pseudo);
+                if (existingTimer) {
+                    if (confirm('A chronometer already exists with this username. Do you want to load it?')) {
+                        currentTimer = existingTimer;
+                        seconds = currentTimer.seconds || 0;
+                        isRunning = false;
+
+                        pseudoInput.value = currentTimer.pseudo;
+                        descriptionInput.value = currentTimer.description || '';
+
+                        updateDisplay();
+
+                        startBtn.disabled = false;
+                        resetBtn.disabled = false;
+                        pseudoInput.disabled = true;
+                        descriptionInput.disabled = true;
+
+                        displayCurrentTimer();
+                        return true;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading existing timer:', error);
+            }
+            return false;
+        }
+
+        function displayCurrentTimer() {
+            if (currentTimer) {
+                currentTimerInfo.innerHTML = `
+                    <p><strong>Username:</strong> ${currentTimer.pseudo}</p>
+                    <p><strong>Time:</strong> ${formatTime(currentTimer.seconds)}</p>
+                    <p><strong>Started:</strong> ${formatDate(currentTimer.createdAt)}</p>
+                    ${currentTimer.description ? `<p class="description"><strong>Description:</strong> ${currentTimer.description}</p>` : ''}
+                `;
+                currentTimerDisplay.style.display = 'block';
+            }
+        }
+
+        async function updateLeaderboard() {
+            try {
+                leaderboardLoading.style.display = 'block';
+                leaderboardBody.innerHTML = '';
+                
+                const timers = await fetchTimers();
+                const sortedTimers = timers.sort((a, b) => b.seconds - a.seconds);
+
+                leaderboardBody.innerHTML = '';
+                sortedTimers.forEach((timer, index) => {
+                    const row = document.createElement('tr');
+
+                    if (currentTimer && timer._id === currentTimer._id) {
+                        row.style.backgroundColor = 'rgba(139, 0, 0, 0.1)';
+                    }
+
+                    row.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${timer.pseudo}</td>
+                        <td>${formatTime(timer.seconds)}</td>
+                        <td>${timer.description || '-'}</td>
+                        <td>${formatDate(timer.createdAt)}</td>
+                    `;
+
+                    leaderboardBody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Error updating leaderboard:', error);
+                showError(leaderboardBody, 'Failed to load leaderboard');
+            } finally {
+                leaderboardLoading.style.display = 'none';
+            }
+        }
+
+        async function updateRecentTimers() {
+            try {
+                recentLoading.style.display = 'block';
+                recentTimersContainer.innerHTML = '';
+                
+                const timers = await fetchRecentTimers();
+                const sortedTimers = timers.sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated));
+
+                sortedTimers.forEach(timer => {
+                    const card = document.createElement('div');
+                    card.className = 'timer-card';
+
+    
