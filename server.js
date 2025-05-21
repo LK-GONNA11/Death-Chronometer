@@ -1,112 +1,71 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
-const mongoose = require('mongoose');
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
+let timers = [];
+let nextId = 1;
+
+app.post('/api/timers', (req, res) => {
+  const { pseudo, description } = req.body;
+  if (timers.find(t => t.pseudo === pseudo)) {
+    return res.status(400).json({ error: 'Timer with this username already exists' });
+  }
+  const newTimer = {
+    id: nextId++,
+    pseudo,
+    description: description || '',
+    seconds: 0,
+    isRunning: true,
+    createdAt: new Date(),
+    lastUpdated: new Date()
+  };
+  timers.push(newTimer);
+  res.status(201).json(newTimer);
 });
 
-const timerSchema = new mongoose.Schema({
-    pseudo: { type: String, required: true },
-    description: String,
-    seconds: { type: Number, default: 0 },
-    isRunning: { type: Boolean, default: false },
-    createdAt: { type: Date, default: Date.now },
-    lastUpdated: { type: Date, default: Date.now }
+app.get('/api/timers', (req, res) => {
+  res.json(timers.sort((a, b) => b.seconds - a.seconds));
 });
 
-const Timer = mongoose.model('Timer', timerSchema);
-
-app.post('/api/timers', async (req, res) => {
-    try {
-        const { pseudo, description } = req.body;
-        const existingTimer = await Timer.findOne({ pseudo });
-        if (existingTimer) {
-            return res.status(400).json({ error: 'Timer with this username already exists' });
-        }
-        const timer = new Timer({
-            pseudo,
-            description,
-            isRunning: true
-        });
-        await timer.save();
-        res.status(201).json(timer);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+app.get('/api/timers/recent', (req, res) => {
+  const recent = timers
+    .sort((a, b) => b.lastUpdated - a.lastUpdated)
+    .slice(0, 5);
+  res.json(recent);
 });
 
-app.get('/api/timers', async (req, res) => {
-    try {
-        const timers = await Timer.find().sort({ seconds: -1 });
-        res.json(timers);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+app.get('/api/timers/:pseudo', (req, res) => {
+  const timer = timers.find(t => t.pseudo === req.params.pseudo);
+  if (!timer) return res.status(404).json({ error: 'Timer not found' });
+  res.json(timer);
 });
 
-app.get('/api/timers/recent', async (req, res) => {
-    try {
-        const timers = await Timer.find().sort({ lastUpdated: -1 }).limit(5);
-        res.json(timers);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+app.put('/api/timers/:id', (req, res) => {
+  const timer = timers.find(t => t.id === parseInt(req.params.id));
+  if (!timer) return res.status(404).json({ error: 'Timer not found' });
+
+  const { seconds, isRunning, description } = req.body;
+  if (seconds !== undefined) timer.seconds = seconds;
+  if (isRunning !== undefined) timer.isRunning = isRunning;
+  if (description !== undefined) timer.description = description;
+  timer.lastUpdated = new Date();
+
+  res.json(timer);
 });
 
-app.get('/api/timers/:pseudo', async (req, res) => {
-    try {
-        const timer = await Timer.findOne({ pseudo: req.params.pseudo });
-        if (!timer) {
-            return res.status(404).json({ error: 'Timer not found' });
-        }
-        res.json(timer);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
+app.delete('/api/timers/:id', (req, res) => {
+  const index = timers.findIndex(t => t.id === parseInt(req.params.id));
+  if (index === -1) return res.status(404).json({ error: 'Timer not found' });
 
-app.put('/api/timers/:id', async (req, res) => {
-    try {
-        const { seconds, isRunning, description } = req.body;
-        const timer = await Timer.findByIdAndUpdate(
-            req.params.id,
-            {
-                seconds,
-                isRunning,
-                description,
-                lastUpdated: Date.now()
-            },
-            { new: true }
-        );
-        if (!timer) {
-            return res.status(404).json({ error: 'Timer not found' });
-        }
-        res.json(timer);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.delete('/api/timers/:id', async (req, res) => {
-    try {
-        const timer = await Timer.findByIdAndDelete(req.params.id);
-        if (!timer) {
-            return res.status(404).json({ error: 'Timer not found' });
-        }
-        res.json({ message: 'Timer deleted successfully' });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+  timers.splice(index, 1);
+  res.json({ message: 'Timer deleted successfully' });
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
