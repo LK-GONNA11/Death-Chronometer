@@ -2,19 +2,12 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const mongoose = require('mongoose');
-const path = require('path');
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-app.use(express.static(path.join(__dirname, 'public')));
-
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-mongoose.connect('mongodb://localhost:27017/deathChronometer', {
+mongoose.connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true
 });
@@ -84,11 +77,11 @@ app.put('/api/timers/:id', async (req, res) => {
         const { seconds, isRunning, description } = req.body;
         const timer = await Timer.findByIdAndUpdate(
             req.params.id,
-            { 
-                seconds, 
-                isRunning, 
+            {
+                seconds,
+                isRunning,
                 description,
-                lastUpdated: Date.now() 
+                lastUpdated: Date.now()
             },
             { new: true }
         );
@@ -116,4 +109,4 @@ app.delete('/api/timers/:id', async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-});ole.log(`Server running on port ${PO
+});
