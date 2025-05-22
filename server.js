@@ -1,13 +1,48 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
+const mongoose = require('mongoose');
+const path = require('path');
 
 const app = express();
-app.use(cors());
+
+// Middleware
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS || '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type']
+}));
 app.use(bodyParser.json({ limit: '10kb' }));
 
-// Données en mémoire
-let timers = [];
+// Serve static files from 'public' folder
+app.use(express.static(path.join(__dirname, 'public')));
+
+// MongoDB connection
+const connectDB = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true
+    });
+    console.log('MongoDB connected');
+  } catch (err) {
+    console.error('MongoDB connection error:', err.message);
+    process.exit(1); // Exit on connection failure
+  }
+};
+connectDB();
+
+// Mongoose Schema
+const timerSchema = new mongoose.Schema({
+  pseudo: { type: String, required: true, unique: true, maxlength: 50 },
+  description: { type: String, default: '' },
+  seconds: { type: Number, default: 0 },
+  isRunning: { type: Boolean, default: true },
+  createdAt: { type: Date, default: Date.now },
+  lastUpdated: { type: Date, default: Date.now }
+});
+
+const Timer = mongoose.model('Timer', timerSchema);
 
 // Validation middleware
 const validateTimerInput = (req, res, next) => {
@@ -21,77 +56,157 @@ const validateTimerInput = (req, res, next) => {
   next();
 };
 
-// Mettre à jour les timers toutes les secondes
-setInterval(() => {
-  const now = new Date();
-  timers.forEach(timer => {
-    if (timer.isRunning) {
-      timer.seconds += 1;
-      timer.lastUpdated = now;
-    }
-  });
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(`${err.message} - ${req.originalUrl} - ${req.method} - ${req.ip}`);
+  res.status(500).json({ error: 'Erreur interne du serveur' });
+});
+
+// Update running timers (every second)
+setInterval(async () => {
+  try {
+    await Timer.updateMany(
+      { isRunning: true },
+      { $inc: { seconds: 1 }, $set: { lastUpdated: new Date() } }
+    );
+  } catch (err) {
+    console.error('Error updating timers:', err.message);
+  }
 }, 1000);
 
 // Routes
-app.post('/api/timers', validateTimerInput, (req, res) => {
+app.post('/api/timers', validateTimerInput, async (req, res) => {
   const { pseudo, description } = req.body;
-  if (timers.some(t => t.pseudo === pseudo)) {
-    return res.status(400).json({ error: 'Un timer avec ce pseudo existe déjà' });
+  try {
+    const existingTimer = await Timer.findOne({ pseudo });
+    if (existingTimer) {
+      return res.status(400).json({ error: 'Un timer avec ce pseudo existe déjà' });
+    }
+
+    const newTimer = new Timer({
+      pseudo,
+      description: description || '',
+      seconds: 0,
+      isRunning: true,
+      createdAt: new Date(),
+      lastUpdated: new Date()
+    });
+
+    await newTimer.save();
+    console.log(`Nouveau timer créé: ${pseudo}`);
+    res.status(201).json(newTimer);
+  } catch (err) {
+    console.error('Error creating timer:', err.message);
+    res.status(500).json({ error: 'Erreur lors de la création du timer' });
   }
-
-  const newTimer = {
-    id: Date.now().toString(),
-    pseudo,
-    description: description || '',
-    seconds: 0,
-    isRunning: true,
-    createdAt: new Date(),
-    lastUpdated: new Date()
-  };
-
-  timers.push(newTimer);
-  res.status(201).json(newTimer);
 });
 
-app.get('/api/timers', (req, res) => {
+app.get('/api/timers', async (req, res) => {
   const { sortBy = 'seconds', limit = 10 } = req.query;
-  let sorted = [...timers];
-  sorted.sort((a, b) => (sortBy === 'createdAt' ? b.createdAt - a.createdAt : b.seconds - a.seconds));
-  res.json(sorted.slice(0, limit));
+  try {
+    const sortOption = sortBy === 'createdAt' ? { createdAt: -1 } : { seconds: -1 };
+    const timers = await Timer.find()
+      .sort(sortOption)
+      .limit(parseInt(limit));
+    res.json(timers);
+  } catch (err) {
+    console.error('Error fetching timers:', err.message);
+    res.status(500).json({ error: 'Erreur lors de la récupération des timers' });
+  }
 });
 
-app.get('/api/timers/:pseudo', (req, res) => {
-  const timer = timers.find(t => t.pseudo === req.params.pseudo);
-  if (!timer) return res.status(404).json({ error: 'Timer non trouvé' });
-  res.json(timer);
+app.get('/api/timers/recent', async (req, res) => {
+  try {
+    const recent = await Timer.find()
+      .sort({ lastUpdated: -1 })
+      .limit(5);
+    res.json(recent);
+  } catch (err) {
+    console.error('Error fetching recent timers:', err.message);
+    res.status(500).json({ error: 'Erreur lors de la récupération des timers récents' });
+  }
 });
 
-app.put('/api/timers/:id', (req, res) => {
-  const timer = timers.find(t => t.id === req.params.id);
-  if (!timer) return res.status(404).json({ error: 'Timer non trouvé' });
-
-  const { seconds, isRunning, description } = req.body;
-  if (typeof seconds === 'number' && seconds >= 0) timer.seconds = seconds;
-  if (typeof isRunning === 'boolean') timer.isRunning = isRunning;
-  if (typeof description === 'string') timer.description = description;
-  timer.lastUpdated = new Date();
-
-  res.json(timer);
+app.get('/api/timers/:pseudo', async (req, res) => {
+  try {
+    const timer = await Timer.findOne({ pseudo: req.params.pseudo });
+    if (!timer) {
+      console.warn(`Timer non trouvé: ${req.params.pseudo}`);
+      return res.status(404).json({ error: 'Timer non trouvé' });
+    }
+    res.json(timer);
+  } catch (err) {
+    console.error('Error fetching timer:', err.message);
+    res.status(500).json({ error: 'Erreur lors de la récupération du timer' });
+  }
 });
 
-app.delete('/api/timers/:id', (req, res) => {
-  const index = timers.findIndex(t => t.id === req.params.id);
-  if (index === -1) return res.status(404).json({ error: 'Timer non trouvé' });
-  const deleted = timers.splice(index, 1)[0];
-  res.json({ message: `Timer supprimé: ${deleted.pseudo}` });
+app.put('/api/timers/:id', async (req, res) => {
+  try {
+    const timer = await Timer.findById(req.params.id);
+    if (!timer) {
+      console.warn(`Timer non trouvé: ID ${req.params.id}`);
+      return res.status(404).json({ error: 'Timer non trouvé' });
+    }
+
+    const { seconds, isRunning, description } = req.body;
+    if (seconds !== undefined && !isNaN(seconds) && seconds >= 0) {
+      timer.seconds = parseInt(seconds);
+    }
+    if (isRunning !== undefined && typeof isRunning === 'boolean') {
+      timer.isRunning = isRunning;
+    }
+    if (description !== undefined && typeof description === 'string') {
+      timer.description = description;
+    }
+    timer.lastUpdated = new Date();
+
+    await timer.save();
+    console.log(`Timer mis à jour: ID ${req.params.id}`);
+    res.json(timer);
+  } catch (err) {
+    console.error('Error updating timer:', err.message);
+    res.status(500).json({ error: 'Erreur lors de la mise à jour du timer' });
+  }
 });
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timersCount: timers.length });
+app.delete('/api/timers/:id', async (req, res) => {
+  try {
+    const timer = await Timer.findByIdAndDelete(req.params.id);
+    if (!timer) {
+      console.warn(`Timer non trouvé: ID ${req.params.id}`);
+      return res.status(404).json({ error: 'Timer non trouvé' });
+    }
+    console.log(`Timer supprimé: ${timer.pseudo}`);
+    res.json({ message: 'Timer supprimé avec succès' });
+  } catch (err) {
+    console.error('Error deleting timer:', err.message);
+    res.status(500).json({ error: 'Erreur lors de la suppression du timer' });
+  }
+});
+
+// Health check route
+app.get('/health', async (req, res) => {
+  try {
+    const count = await Timer.countDocuments();
+    res.json({ status: 'OK', timersCount: count });
+  } catch (err) {
+    res.status(500).json({ status: 'ERROR', error: 'Database error' });
+  }
+});
+
+// Serve index.html on root
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Serveur démarré sur le port ${PORT}`);
+});
+
+// Handle uncaught errors
+process.on('unhandledRejection', (err) => {
+  console.error(`Erreur non capturée: ${err.message}`);
+  process.exit(1); // Exit to prevent running in an unstable state
 });
