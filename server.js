@@ -6,20 +6,27 @@ const path = require('path');
 
 const app = express();
 
-// Middlewares
 app.use(cors());
 app.use(bodyParser.json());
 
-// Sert les fichiers frontend (index.html, script.js, style.css)
-app.use(express.static(path.join(__dirname, 'public')));
+// Connect to MongoDB via environment variable
+const mongoUri = process.env.MONGO_URI;
+if (!mongoUri) {
+  console.error('Error: MONGO_URI environment variable not set');
+  process.exit(1);
+}
 
-// Connexion à MongoDB
-mongoose.connect('mongodb://localhost:27017/deathChronometer', {
+mongoose.connect(mongoUri, {
     useNewUrlParser: true,
     useUnifiedTopology: true
+}).then(() => {
+    console.log('Connected to MongoDB');
+}).catch(err => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
 });
 
-// Schéma Mongoose
+// Timer model
 const timerSchema = new mongoose.Schema({
     pseudo: { type: String, required: true },
     description: String,
@@ -31,10 +38,11 @@ const timerSchema = new mongoose.Schema({
 
 const Timer = mongoose.model('Timer', timerSchema);
 
-// Routes API
+// API routes
 app.post('/api/timers', async (req, res) => {
     try {
         const { pseudo, description } = req.body;
+
         const existingTimer = await Timer.findOne({ pseudo });
         if (existingTimer) {
             return res.status(400).json({ error: 'Timer with this username already exists' });
@@ -86,14 +94,14 @@ app.get('/api/timers/:pseudo', async (req, res) => {
 app.put('/api/timers/:id', async (req, res) => {
     try {
         const { seconds, isRunning, description } = req.body;
-        
+
         const timer = await Timer.findByIdAndUpdate(
             req.params.id,
-            { 
-                seconds, 
-                isRunning, 
+            {
+                seconds,
+                isRunning,
                 description,
-                lastUpdated: Date.now() 
+                lastUpdated: Date.now()
             },
             { new: true }
         );
@@ -120,13 +128,15 @@ app.delete('/api/timers/:id', async (req, res) => {
     }
 });
 
-// Pour toute autre route, on sert index.html (utile pour un SPA ou React/Vue frontend)
+// Serve static files (index.html, CSS, JS...) from 'public' folder
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Catch-all route to serve index.html for any other request (useful for client side routing)
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Démarrage du serveur
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`✅ Server running on http://localhost:${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
